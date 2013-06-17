@@ -97,20 +97,21 @@ def LEDShift(clk, rst, i, sel, sel_out, right_out):
         right_out.next = Signal(concat( e[3], d[3], c[3], b[3], a[3]))
     return shifter, selector, right_outter
 
+#tested
 def position(left, right, pos):
     count = Signal(intbv(0)[3:])
     # left : -- , right : ++
     @always(left.posedge)
     def lefting():
         if right == False:
-            if left == 0:
+            if count == 0:
                 count.next = 4
             else:
                 count.next = count - 1
     @always(right.posedge)
     def righting():
         if left == False:
-            if left == 4:
+            if count == 4:
                 count.next = 0
             else:
                 count.next = count + 1
@@ -122,25 +123,26 @@ def position(left, right, pos):
 def display(clk, fastClk, leftbutton, resetbutton, rightbutton , rows, col_sel):
     disp_col = Signal(intbv(0)[3:])
     st = enum('START', 'LOSE')
-    state = Signal(st.START)
+    my_state = Signal(st.START)
+    
     pos = Signal(intbv(0)[3:])
 
     # random "hat"
     random_hat = Signal(intbv(0)[5:])
     
     #signals for buffers
-    sel = Signal(intbv(0)[3:])
     sel_out = Signal(intbv(0)[4:])
     sel_out2 = Signal(intbv(0)[4:])
-    left_in = Signal(intbv(0)[5:]) # this is
+    left_in = Signal(intbv(0)[5:]) 
     right_out = Signal(intbv(0)[5:])
     right_out2 = Signal(intbv(0)[5:])
     
     # component here
 
     # for last time, I will seperate these to 3 CPLDs
-    upperBuf = LEDShift(clk, resetbutton, left_in, sel, sel_out, right_out) #"positional" upper
-    lowerBuf = LEDShift(clk, resetbutton, right_out, sel, sel_out2, right_out2)
+    # def LEDShift(clk, rst, i, sel, sel_out, right_out):
+    upperBuf = LEDShift(clk, resetbutton, left_in, disp_col, sel_out, right_out) #"positional" upper
+    lowerBuf = LEDShift(clk, resetbutton, right_out, disp_col, sel_out2, right_out2)
     positionBuf = position(leftbutton, rightbutton, pos)# my charactor's position
 
     rand = random_comp(clk, fastClk, random_hat)
@@ -150,7 +152,8 @@ def display(clk, fastClk, leftbutton, resetbutton, rightbutton , rows, col_sel):
     def resetState():
         if resetbutton == True:
             state.next = st.START
-
+            count_for_lose.next = 0
+            
     @always(fastClk.posedge)
     def changeCol():
         if disp_col == 4:
@@ -159,45 +162,70 @@ def display(clk, fastClk, leftbutton, resetbutton, rightbutton , rows, col_sel):
             disp_col.next = disp_col + 1
 
     count_for_lose = Signal(intbv(0)[5:])
-    
+    isThereCollision = Signal(0)
+    @always_comb
+    def collision_check():
+        # collision check
+        if pos == 0:
+            if right_out2[0]:
+                isThereCollision.next = True
+            else:
+                isThereCollision.next = False
+        elif pos == 1:
+            if right_out2[1]:
+                isThereCollision.next = True
+            else:
+                isThereCollision.next = False
+        elif pos == 2:
+            if right_out2[2]:
+                isThereCollision.next = True
+            else:
+                isThereCollision.next = False
+        elif pos == 3:
+            if right_out2[3]:
+                isThereCollision.next = True
+            else:
+                isThereCollision.next = False
+        elif pos == 4:
+            if right_out2[4]:
+                isThereCollision.next = True
+            else:
+                isThereCollision.next = False
+        else:
+            isThereCollision.next = True
     @always(clk.posedge)
     def FSM():
-        if state == st.START:
+        if my_state == st.START:
             #seeding "random hat"
             left_in.next = random_hat
             
             # collision check
-            if pos == 0:
-                if right_out2[0]:
-                    state.next = st.LOSE
-            elif pos == 1:
-                if right_out2[1]:
-                    state.next = st.LOSE
-            elif pos == 2:
-                if right_out2[2]:
-                    state.next = st.LOSE
-            elif pos == 3:
-                if right_out2[3]:
-                    state.next = st.LOSE
-            elif pos == 4:
-                if right_out2[4]:
-                    state.next = st.LOSE
-                    
+            if isThereCollision:
+                my_state.next = st.LOSE
+                left_in.next = 31
+                #print "COLLISION"
+                
         else: # LOSE state
-            count_for_lose.next = count_for_lose + 1
             
-            if count_for_lose < 8:
-                # downing : 8 ticks
-                left_in.next = 63
-            elif count_for_lose < 24:
-                # holding : 16 ticks
-                left_in.next = right_out2
+            if count_for_lose < 23:
+                # downing&holding : 24 ticks
+                # row = count_for_lose
+                left_in.next = 31
+                ''' 
+                left_in.next[0] = 1
+                left_in.next[1] = (not row[1] and not row[4]) or (not row[2] and row[3] and not row[4]) or (row[2] and not row[3] and not row[4]) or (row[0] and row[3]) or (row[0] and row[2])
+                left_in.next[2] = (not row[4]) or (row[0] and row[3]) or (row[0] and row[4])
+                left_in.next[3] = (not row[2] and not row[3] and not row[4]) or (not row[1] and row[2] and row[3] and not row[4]) or (row[1] and not row[3] and not row[4]) or (row[0] and row[2] and row[4])
+                left_in.next[4] = 1
+                '''
             elif count_for_lose < 31:
                 # clearing : 7 ticks
                 left_in.next = 0
             else: 
                 # change state : 1 ticks
-                state = st.START
+                my_state.next = st.START
+                
+            count_for_lose.next = (count_for_lose + 1)%32
 
                     
     @always_comb
@@ -205,65 +233,113 @@ def display(clk, fastClk, leftbutton, resetbutton, rightbutton , rows, col_sel):
         col_sel.next = disp_col
         
         #row assign
-        rows.next[7:] = concat(sel_out2[3:] , sel_out )
-
+        rows.next[6:] = concat(sel_out2[2:], sel_out)
+        
         if pos == disp_col:
             rows.next[7] = 1
+            rows.next[6] = 1
         else:
             rows.next[7] = sel_out2[3]
+            rows.next[6] = sel_out2[2]
             
-    return changeCol, assign, FSM, upperBuf, lowerBuf, positionBuf, resetState
-
+    return changeCol, assign, FSM, upperBuf, lowerBuf, positionBuf, resetState, rand, collision_check
+'''
+"LOSE" - ASCII ART\
+1 1 1 1 1
+1 1 1 1 1
+1 0 1 1 1
+1 0 1 1 1
+1 0 1 1 1
+1 0 0 0 1
+1 1 1 1 1
+1 0 0 0 1
+1 0 1 0 1
+1 0 0 0 1
+1 1 1 1 1
+1 0 0 0 1
+1 0 1 1 1
+1 0 0 0 1
+1 1 1 0 1
+1 0 0 0 1
+1 1 1 1 1
+1 0 0 0 1
+1 0 1 1 1
+1 0 0 0 1
+1 0 1 1 1
+1 0 0 0 1 - row 1
+1 1 1 1 1 - row 0
+'''
+'''
+def LOSEAscii(row, o):
+    @always_comb
+    def comb():
+        o[0] = 1
+        o[1] = (not row[2] and not row[3] and not row[4]) or (not row[1] and row[2] and row[3] and not row[4]) or (row[1] and not row[3] and not row[4]) or (row[0] and row[2] and row[4])
+        o[2] = (not row[4]) or (row[0] and row[3]) or (row[0] and row[4])
+        o[3] = (not row[1] and not row[4]) or (not row[2] and row[3] and not row[4]) or (row[2] and not row[3] and not row[4]) or (row[0] and row[4]) or (row[0] and row[2])
+        o[4] = 1
+    return comb
+'''
+g_rows = [[0]*8 for x in range(5)]
+def printRows():
+    for i in range(5):
+        for j in range(8):
+            print int(g_rows[i][j]),
+        print ""
+    print ""
+def assignRows(col_sel,rows):
+    
+    g_rows[col_sel] = [int(r) for r in rows]
+        
 # below is test code
-def randomCompTestBench():
+def displayTestBench():
+    
     fastClk = Signal(True)
     selClk = Signal(True)
-    val = Signal(intbv(0)[5:])
+    leftButton = Signal(False)
+    rightButton = Signal(False)
+    resetButton = ResetSignal(0, active=1, async=True)
+    rows = Signal(intbv(0)[8:])
+    col_sel = Signal(intbv(0)[3:])
+    
     @always(delay(37))
     def fastClkGen():
         fastClk.next = not fastClk
 
-    @always(delay(3539))
+    @always(delay(3537))
     def selClkGen():
         selClk.next = not selClk
 
-    
-    rand = random_comp(selClk, fastClk, val)
-    
+    #(clk, fastClk, leftbutton, resetbutton, rightbutton , rows, col_sel)
+    main = display(selClk, fastClk, leftButton, resetButton, rightButton, rows, col_sel)
+
     @instance
     def monitor():
+        al = [[0]*8 for x in range(5)]
         while True:
             yield selClk.negedge
-            print val
             yield selClk.posedge
-                                        
-    return fastClkGen, selClkGen,rand, monitor
+            '''
+            print "[",col_sel,"]",
+            for i in range(8):
+                print int(rows[i]),
+            print ""
+            '''
+            for t in range(5):
 
+                yield fastClk.posedge
+                for x in range(8):
+                    
+                    al[col_sel][x] = int(rows[x])
+                    
+            for i in range(5):
+                for j in range(8):
+                    print al[i][j],
+                print ""
+            print ""
+                                    
+    return fastClkGen, selClkGen, main, monitor
 
-def randomerTestbench():
-    fastClk = Signal(True)
-    selClk = Signal(True)
-    old = Signal(intbv(0)[3:])
-    new = Signal(intbv(0)[3:])
-
-    @always(delay(31))
-    def fastClkGen():
-        fastClk.next = not fastClk
-
-    @always(delay(3539))
-    def selClkGen():
-        selClk.next = not selClk
-
-    r = random(selClk, fastClk, old, new)
-    
-    @instance
-    def monitor():
-        while True:
-            yield selClk.negedge
-            print new
-            yield selClk.posedge
-                                          
-    return fastClkGen,selClkGen,r,monitor
 def ledGenTest():
 
     # Random
@@ -331,5 +407,5 @@ def decoderTest():
             print "%d %d"%(i , o)
     return r, mon        
 if __name__ == "__main__":
-    sim = Simulation(randomCompTestBench())
-    sim.run(1000000)
+    sim = Simulation(displayTestBench())
+    sim.run(10000000)

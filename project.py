@@ -18,22 +18,30 @@ def dec325(sel, o):
 def random(select_clk, fast_clk , old, new):
 
     count = Signal(intbv(0)[3:]) # [0,4]
+    clk_sep = Signal(1)
     
     @always(fast_clk.posedge)
     def counting():
+        
         if count != 4:
             count.next = count + 1
         else:
             count.next = 0
+    
     @always(select_clk.posedge)
+    def clock_cutting():
+        clk_sep.next = not clk_sep
+        
+    @always(clk_sep.posedge)
     def showing():
+        
         if old == count:
             new.next = (count + 1)%5
             old.next = (count + 1)%5
         else:
             new.next = count
             old.next = count
-    return counting, showing
+    return counting, showing, clock_cutting
 
 # upper is lower bit
 # from left, col 0, 1 , 2 , 3, 4
@@ -121,14 +129,17 @@ def ledGenTest():
     # LED
     sel = Signal(intbv(0)[3:])
     sel_out = Signal(intbv(0)[4:])
+    sel_out2 = Signal(intbv(0)[4:])
     left_in = Signal(intbv(0)[5:])
     right_out = Signal(intbv(0)[5:])
+    right_out2 = Signal(intbv(0)[5:])
     
 
     dec = dec325(new, left_in)
     rand = random(selClk, fastClk, old, new)
     
     upled = upLEDShift(selClk, ResetSignal(0, active=1, async=True), left_in, sel, sel_out, right_out)
+    downled = upLEDShift(selClk, ResetSignal(0, active=1, async=True), right_out, sel, sel_out2, right_out2)
     
     @instance
     def monitor():
@@ -146,13 +157,14 @@ def ledGenTest():
                 yield delay(2)
                 for x in range(4):
                     print int(sel_out[x]),
-
+                for x in range(4):
+                    print int(sel_out2[x]),
 
                 print ""
             print "right_out", right_out
                 
                                           
-    return fastClkGen,selClkGen,rand,monitor, upled, dec
+    return fastClkGen,selClkGen,rand,monitor, upled, downled, dec
 
 def decoderTest():
     i,o = [Signal(intbv(0)[2:]), Signal(intbv(0)[4:])]

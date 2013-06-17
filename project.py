@@ -1,3 +1,4 @@
+# -*- coding: cp949 -*-
 from myhdl import *
 
 #tested
@@ -17,9 +18,9 @@ def dec325(sel, o):
     return decoder
 
 #tested
-def random(select_clk, fast_clk , old, new):
+def random(select_clk, fast_clk , old, new_out):
 
-    count = Signal(intbv(0)[3:]) # [0,4]
+    count = Signal(modbv(0)[3:]) # [0,4]
     clk_sep = Signal(True)
     
     @always(fast_clk.posedge)
@@ -38,20 +39,24 @@ def random(select_clk, fast_clk , old, new):
     def showing():
         
         if old == count:
-            new.next = (count + 1)%5
-            old.next = (count + 1)%5
+            a  = (count + 1)
+            if a == 5:
+                a = 0
+            new_out.next = a#(count + 1)%5
+            old.next = a#(count + 1)%5
         else:
-            new.next = count
+
+            new_out.next = count
             old.next = count
     return counting, showing, clock_cutting
 
 #tested
 def random_comp(select_clk, fast_clk, o):
-    old = Signal(intbv(0)[3:])
-    new = Signal(intbv(0)[3:])
+    old = Signal(modbv(0)[3:])
+    new_out = Signal(modbv(0)[3:])
     
-    dec = dec325(new, o)
-    rand = random(select_clk, fast_clk, old, new)
+    dec = dec325(new_out, o)
+    rand = random(select_clk, fast_clk, old, new_out)
 
     return dec, rand
 
@@ -94,20 +99,29 @@ def LEDShift(clk, rst, i, sel, sel_out, right_out):
 
     @always_comb
     def right_outter():
-        right_out.next = Signal(concat( e[3], d[3], c[3], b[3], a[3]))
+        right_out.next = concat( e[3], d[3], c[3], b[3], a[3])
     return shifter, selector, right_outter
 
 #tested
 def position(left, right, pos):
     count = Signal(intbv(0)[3:])
+
     # left : -- , right : ++
-    @always(left.posedge)
-    def lefting():
-        if right == False:
+    @always(left.posedge, right.posedge)
+    def shifting():
+        if right:
             if count == 0:
                 count.next = 4
             else:
                 count.next = count - 1
+        elif left:
+            if count == 4:
+                count.next = 0
+            else:
+                count.next = count + 1
+        else:
+            pass
+    '''
     @always(right.posedge)
     def righting():
         if left == False:
@@ -115,10 +129,11 @@ def position(left, right, pos):
                 count.next = 0
             else:
                 count.next = count + 1
+    '''
     @always_comb
     def assign():
         pos.next = count
-    return lefting, righting, assign
+    return shifting, assign
 
 def display(clk, fastClk, leftbutton, resetbutton, rightbutton , rows, col_sel):
     disp_col = Signal(intbv(0)[3:])
@@ -147,13 +162,6 @@ def display(clk, fastClk, leftbutton, resetbutton, rightbutton , rows, col_sel):
 
     rand = random_comp(clk, fastClk, random_hat)
     
-    
-    @always(resetbutton.posedge)
-    def resetState():
-        if resetbutton == True:
-            state.next = st.START
-            count_for_lose.next = 0
-            
     @always(fastClk.posedge)
     def changeCol():
         if disp_col == 4:
@@ -162,7 +170,7 @@ def display(clk, fastClk, leftbutton, resetbutton, rightbutton , rows, col_sel):
             disp_col.next = disp_col + 1
 
     count_for_lose = Signal(intbv(0)[5:])
-    isThereCollision = Signal(0)
+    isThereCollision = Signal(False)
     @always_comb
     def collision_check():
         # collision check
@@ -193,7 +201,7 @@ def display(clk, fastClk, leftbutton, resetbutton, rightbutton , rows, col_sel):
                 isThereCollision.next = False
         else:
             isThereCollision.next = True
-    @always(clk.posedge)
+    @always_seq(clk.posedge, reset= resetbutton)
     def FSM():
         if my_state == st.START:
             #seeding "random hat"
@@ -233,16 +241,16 @@ def display(clk, fastClk, leftbutton, resetbutton, rightbutton , rows, col_sel):
         col_sel.next = disp_col
         
         #row assign
-        rows.next[6:] = concat(sel_out2[2:], sel_out)
+        rows.next[7:] = concat(sel_out2[3:], sel_out)
         
         if pos == disp_col:
             rows.next[7] = 1
-            rows.next[6] = 1
+#            rows.next[6] = 1
         else:
             rows.next[7] = sel_out2[3]
-            rows.next[6] = sel_out2[2]
+ #           rows.next[6] = sel_out2[2]
             
-    return changeCol, assign, FSM, upperBuf, lowerBuf, positionBuf, resetState, rand, collision_check
+    return changeCol, assign, FSM, upperBuf, lowerBuf, positionBuf, rand, collision_check
 '''
 "LOSE" - ASCII ART\
 1 1 1 1 1
@@ -330,7 +338,7 @@ def displayTestBench():
                 yield fastClk.posedge
                 for x in range(8):
                     
-                    al[col_sel][x] = int(rows[x])
+                    al[col_sel][x] = "бс" if rows[x] else "бр"
                     
             for i in range(5):
                 for j in range(8):
@@ -346,7 +354,7 @@ def ledGenTest():
     fastClk = Signal(True)
     selClk = Signal(True)
     old = Signal(intbv(0)[3:])
-    new = Signal(intbv(0)[3:])
+    new_out = Signal(intbv(0)[3:])
     
     @always(delay(37))
     def fastClkGen():
@@ -366,8 +374,8 @@ def ledGenTest():
     right_out2 = Signal(intbv(0)[5:])
     
 
-    dec = dec325(new, left_in)
-    rand = random(selClk, fastClk, old, new)
+    dec = dec325(new_out, left_in)
+    rand = random(selClk, fastClk, old, new_out)
     
     upled = LEDShift(selClk, ResetSignal(0, active=1, async=True), left_in, sel, sel_out, right_out)
     downled = LEDShift(selClk, ResetSignal(0, active=1, async=True), right_out, sel, sel_out2, right_out2)
@@ -379,7 +387,7 @@ def ledGenTest():
             print "------>"
             
             print ""
-            print new
+            print new_out
             print ""
             
             yield selClk.posedge
@@ -408,4 +416,7 @@ def decoderTest():
     return r, mon        
 if __name__ == "__main__":
     sim = Simulation(displayTestBench())
+    #def display(clk, fastClk, leftbutton, resetbutton, rightbutton , rows, col_sel):
+
+    toVHDL(display, Signal(False), Signal(False), Signal(False), ResetSignal(0,active=1, async=True), Signal(False), Signal(intbv(0)[8:]), Signal(intbv(0)[3:])) 
     sim.run(10000000)

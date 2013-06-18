@@ -42,10 +42,9 @@ def random(select_clk, fast_clk , old, new_out):
             a  = (count + 1)
             if a == 5:
                 a = 0
-            new_out.next = a#(count + 1)%5
-            old.next = a#(count + 1)%5
+            new_out.next = a #(count + 1)%5
+            old.next = a #(count + 1)%5
         else:
-
             new_out.next = count
             old.next = count
     return counting, showing, clock_cutting
@@ -121,6 +120,7 @@ def position(left, right, pos):
                 count.next = count + 1
         else:
             pass
+
     '''
     @always(right.posedge)
     def righting():
@@ -134,8 +134,7 @@ def position(left, right, pos):
     def assign():
         pos.next = count
     return shifting, assign
-
-def display(clk, fastClk, leftbutton, resetbutton, rightbutton , rows, col_sel):
+def displaySeperate(clk, left_in, right_out2, sel_out,sel_out2, fastClk, leftbutton, resetbutton, rightbutton , rows, col_sel):
     disp_col = Signal(intbv(0)[3:])
     st = enum('START', 'LOSE')
     my_state = Signal(st.START)
@@ -145,19 +144,12 @@ def display(clk, fastClk, leftbutton, resetbutton, rightbutton , rows, col_sel):
     # random "hat"
     random_hat = Signal(intbv(0)[5:])
     
-    #signals for buffers
-    sel_out = Signal(intbv(0)[4:])
-    sel_out2 = Signal(intbv(0)[4:])
-    left_in = Signal(intbv(0)[5:]) 
-    right_out = Signal(intbv(0)[5:])
-    right_out2 = Signal(intbv(0)[5:])
-    
+    count_for_lose = Signal(intbv(0)[5:])
+    isThereCollision = Signal(False)    
     # component here
 
     # for last time, I will seperate these to 3 CPLDs
     # def LEDShift(clk, rst, i, sel, sel_out, right_out):
-    upperBuf = LEDShift(clk, resetbutton, left_in, disp_col, sel_out, right_out) #"positional" upper
-    lowerBuf = LEDShift(clk, resetbutton, right_out, disp_col, sel_out2, right_out2)
     positionBuf = position(leftbutton, rightbutton, pos)# my charactor's position
 
     rand = random_comp(clk, fastClk, random_hat)
@@ -169,8 +161,6 @@ def display(clk, fastClk, leftbutton, resetbutton, rightbutton , rows, col_sel):
         else:
             disp_col.next = disp_col + 1
 
-    count_for_lose = Signal(intbv(0)[5:])
-    isThereCollision = Signal(False)
     @always_comb
     def collision_check():
         # collision check
@@ -201,6 +191,8 @@ def display(clk, fastClk, leftbutton, resetbutton, rightbutton , rows, col_sel):
                 isThereCollision.next = False
         else:
             isThereCollision.next = True
+
+            
     @always_seq(clk.posedge, reset= resetbutton)
     def FSM():
         if my_state == st.START:
@@ -248,9 +240,129 @@ def display(clk, fastClk, leftbutton, resetbutton, rightbutton , rows, col_sel):
 #            rows.next[6] = 1
         else:
             rows.next[7] = sel_out2[3]
- #           rows.next[6] = sel_out2[2]
+#            rows.next[6] = sel_out2[2]
+            
+    return changeCol, assign, FSM, positionBuf, rand, collision_check
+
+def display(clk, fastClk, leftbutton, resetbutton, rightbutton , rows, col_sel):
+    disp_col = Signal(intbv(0)[3:])
+    st = enum('START', 'LOSE')
+    my_state = Signal(st.START)
+    
+    pos = Signal(intbv(0)[3:])
+
+    # random "hat"
+    random_hat = Signal(intbv(0)[5:])
+    
+    #signals for buffers
+    sel_out = Signal(intbv(0)[4:])
+    sel_out2 = Signal(intbv(0)[4:])
+    left_in = Signal(intbv(0)[5:]) 
+    right_out = Signal(intbv(0)[5:])
+    right_out2 = Signal(intbv(0)[5:])
+
+    count_for_lose = Signal(intbv(0)[5:])
+    isThereCollision = Signal(False)    
+    # component here
+
+    # for last time, I will seperate these to 3 CPLDs
+    # def LEDShift(clk, rst, i, sel, sel_out, right_out):
+    upperBuf = LEDShift(clk, resetbutton, left_in, disp_col, sel_out, right_out) #"positional" upper
+    lowerBuf = LEDShift(clk, resetbutton, right_out, disp_col, sel_out2, right_out2)
+    positionBuf = position(leftbutton, rightbutton, pos)# my charactor's position
+
+    rand = random_comp(clk, fastClk, random_hat)
+    
+    @always(fastClk.posedge)
+    def changeCol():
+        if disp_col == 4:
+            disp_col.next = 0
+        else:
+            disp_col.next = disp_col + 1
+
+    @always_comb
+    def collision_check():
+        # collision check
+        if pos == 0:
+            if right_out2[0]:
+                isThereCollision.next = True
+            else:
+                isThereCollision.next = False
+        elif pos == 1:
+            if right_out2[1]:
+                isThereCollision.next = True
+            else:
+                isThereCollision.next = False
+        elif pos == 2:
+            if right_out2[2]:
+                isThereCollision.next = True
+            else:
+                isThereCollision.next = False
+        elif pos == 3:
+            if right_out2[3]:
+                isThereCollision.next = True
+            else:
+                isThereCollision.next = False
+        elif pos == 4:
+            if right_out2[4]:
+                isThereCollision.next = True
+            else:
+                isThereCollision.next = False
+        else:
+            isThereCollision.next = True
+
+            
+    @always_seq(clk.posedge, reset= resetbutton)
+    def FSM():
+        if my_state == st.START:
+            #seeding "random hat"
+            left_in.next = random_hat
+            
+            # collision check
+            if isThereCollision:
+                my_state.next = st.LOSE
+                left_in.next = 31
+                #print "COLLISION"
+                
+        else: # LOSE state
+            
+            if count_for_lose < 23:
+                # downing&holding : 24 ticks
+                # row = count_for_lose
+                left_in.next = 31
+                ''' 
+                left_in.next[0] = 1
+                left_in.next[1] = (not row[1] and not row[4]) or (not row[2] and row[3] and not row[4]) or (row[2] and not row[3] and not row[4]) or (row[0] and row[3]) or (row[0] and row[2])
+                left_in.next[2] = (not row[4]) or (row[0] and row[3]) or (row[0] and row[4])
+                left_in.next[3] = (not row[2] and not row[3] and not row[4]) or (not row[1] and row[2] and row[3] and not row[4]) or (row[1] and not row[3] and not row[4]) or (row[0] and row[2] and row[4])
+                left_in.next[4] = 1
+                '''
+            elif count_for_lose < 31:
+                # clearing : 7 ticks
+                left_in.next = 0
+            else: 
+                # change state : 1 ticks
+                my_state.next = st.START
+                
+            count_for_lose.next = (count_for_lose + 1)%32
+
+                    
+    @always_comb
+    def assign():
+        col_sel.next = disp_col
+        
+        #row assign
+        rows.next[7:] = concat(sel_out2[3:], sel_out)
+        
+        if pos == disp_col:
+            rows.next[7] = 1
+#            rows.next[6] = 1
+        else:
+            rows.next[7] = sel_out2[3]
+#            rows.next[6] = sel_out2[2]
             
     return changeCol, assign, FSM, upperBuf, lowerBuf, positionBuf, rand, collision_check
+
 '''
 "LOSE" - ASCII ART\
 1 1 1 1 1
@@ -317,7 +429,6 @@ def displayTestBench():
     @always(delay(3537))
     def selClkGen():
         selClk.next = not selClk
-
     #(clk, fastClk, leftbutton, resetbutton, rightbutton , rows, col_sel)
     main = display(selClk, fastClk, leftButton, resetButton, rightButton, rows, col_sel)
 
@@ -407,6 +518,7 @@ def decoderTest():
     i,o = [Signal(intbv(0)[2:]), Signal(intbv(0)[4:])]
     
     r = dec224(i,o)
+
     @instance
     def mon():
         for x in range(4):
@@ -417,6 +529,9 @@ def decoderTest():
 if __name__ == "__main__":
     sim = Simulation(displayTestBench())
     #def display(clk, fastClk, leftbutton, resetbutton, rightbutton , rows, col_sel):
-
-    toVHDL(display, Signal(False), Signal(False), Signal(False), ResetSignal(0,active=1, async=True), Signal(False), Signal(intbv(0)[8:]), Signal(intbv(0)[3:])) 
+    toVerilog(display, Signal(False), Signal(False), Signal(False), ResetSignal(0,active=1, async=True), Signal(False), Signal(intbv(0)[8:]), Signal(intbv(0)[3:])) 
+    #def LEDShift(clk, rst, i, sel, sel_out, right_out):
+    toVerilog(LEDShift, Signal(False),ResetSignal(0,active=1, async=True), Signal(intbv(0)[5 : ]), Signal(intbv(0)[5:]), Signal(intbv(0)[4:]), Signal(intbv(0)[5:])) 
+    #displaySeperate(clk, left_in, right_out2, sel_out,sel_out2, fastClk, leftbutton, resetbutton, rightbutton , rows, col_sel):
+    toVerilog(displaySeperate, Signal(False), Signal(modbv(0)[5:]),  Signal(modbv(0)[5:]), Signal(modbv(0)[4:]), Signal(modbv(0)[4:]),Signal(False), Signal(False), ResetSignal(0,active=1, async=True), Signal(False), Signal(intbv(0)[8:]), Signal(intbv(0)[3:]))
     sim.run(10000000)

@@ -1,4 +1,4 @@
-module tb_displaySeperate;
+module tb_CPLD1;
 
 reg clk;
 wire [4:0] left_in;
@@ -8,7 +8,7 @@ reg leftbutton;
 reg resetbutton;
 reg rightbutton;
 wire [2:0] pos_c;
-wire [2:0] disp_col;
+wire [2:0] sel;
 
 initial begin
     $from_myhdl(
@@ -22,11 +22,11 @@ initial begin
     $to_myhdl(
         left_in,
         pos_c,
-        disp_col
+        sel
     );
 end
 
-displaySeperate dut(
+CPLD1 dut(
     clk,
     left_in,
     right_out2,
@@ -35,7 +35,7 @@ displaySeperate dut(
     resetbutton,
     rightbutton,
     pos_c,
-    disp_col
+    sel
 );
 
 endmodule

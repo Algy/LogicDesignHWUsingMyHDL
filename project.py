@@ -5,6 +5,7 @@ from myhdl import *
 def dec325(sel, o):
     @always_comb
     def decoder():
+        '''
         if sel == 0:
             o.next = intbv(1)
         elif sel == 1:
@@ -15,6 +16,12 @@ def dec325(sel, o):
             o.next = intbv(8)
         elif sel == 4:
             o.next = intbv(16)
+        '''
+        o.next[0]= not sel[0] and  not sel[1] and  not sel[2] 
+        o.next[1]=sel[0] and  not sel[1] and  not sel[2] 
+        o.next[2]= not sel[0] and sel[1] and  not sel[2] 
+        o.next[3]=sel[0] and sel[1] and  not sel[2] 
+        o.next[4]= not sel[0] and  not sel[1] and sel[2] 
     return decoder
 
 #tested
@@ -37,8 +44,8 @@ def random(select_clk, fast_clk , old, new_out):
         
     @always(clk_sep.posedge)
     def showing():
-        
         if old == count:
+            
             a  = (count + 1)
             if a == 5:
                 a = 0
@@ -134,13 +141,11 @@ def position(left, right, pos):
     def assign():
         pos.next = count
     return shifting, assign
-def displaySeperate(clk, left_in, right_out2, sel_out,sel_out2, fastClk, leftbutton, resetbutton, rightbutton , rows, col_sel):
-    disp_col = Signal(intbv(0)[3:])
+def CPLD1(clk, left_in, right_out2, fastClk, leftbutton, resetbutton, rightbutton , pos_c, sel):
     st = enum('START', 'LOSE')
     my_state = Signal(st.START)
-    
     pos = Signal(intbv(0)[3:])
-
+    
     # random "hat"
     random_hat = Signal(intbv(0)[5:])
     
@@ -156,10 +161,10 @@ def displaySeperate(clk, left_in, right_out2, sel_out,sel_out2, fastClk, leftbut
     
     @always(fastClk.posedge)
     def changeCol():
-        if disp_col == 4:
-            disp_col.next = 0
+        if sel == 4:
+            sel.next = 0
         else:
-            disp_col.next = disp_col + 1
+            sel.next = sel + 1
 
     @always_comb
     def collision_check():
@@ -222,6 +227,7 @@ def displaySeperate(clk, left_in, right_out2, sel_out,sel_out2, fastClk, leftbut
                 # clearing : 7 ticks
                 left_in.next = 0
             else: 
+                left_in.next = 0
                 # change state : 1 ticks
                 my_state.next = st.START
                 
@@ -230,20 +236,52 @@ def displaySeperate(clk, left_in, right_out2, sel_out,sel_out2, fastClk, leftbut
                     
     @always_comb
     def assign():
-        col_sel.next = disp_col
-        
-        #row assign
-        rows.next[7:] = concat(sel_out2[3:], sel_out)
-        
-        if pos == disp_col:
-            rows.next[7] = 1
-#            rows.next[6] = 1
-        else:
-            rows.next[7] = sel_out2[3]
-#            rows.next[6] = sel_out2[2]
+        pos_c.next = pos
             
-    return changeCol, assign, FSM, positionBuf, rand, collision_check
+    return changeCol, assign, FSM, positionBuf,  collision_check , rand
 
+def CPLD2(clk,rst, left_in, sel, sel_out, right_out, sel_decoded):
+    a = LEDShift(clk,rst,left_in,sel,sel_out, right_out)
+    dec = dec325(sel, sel_decoded)
+
+    return a, dec
+def CPLD3(clk,rst, left_in2, sel, sel_out2, right_out2, pos_c, last_row):
+    a = LEDShift(clk,rst,left_in2,sel,sel_out2, right_out2)
+    last = Signal(True)
+    
+    @always_comb
+    def replaceCharactor():
+        if pos_c == sel:
+            last_row.next = 1
+        else:
+            last_row.next = sel_out2[3]
+    
+    return a, replaceCharactor
+def overall( clk, fastClk, leftbutton, resetbutton, rightbutton , rows, col_sel):
+    # (clk, left_in, right_out2, fastClk, leftbutton, resetbutton, rightbutton , pos_c, col_sel):
+    left_in = Signal(intbv(0)[5:])
+    right_out2 = Signal(intbv(0)[5:])
+    left_in2 = Signal(intbv(0)[5:])
+    pos_c = Signal(intbv(0)[3:])
+    sel = Signal(intbv(0)[3:])
+    sel_out = Signal(intbv(0)[4:])
+    sel_out2 = Signal(intbv(0)[4:])
+    sel_decoded = Signal(intbv(0)[5:])
+    last_row = Signal(True)
+    
+    cpld1 = CPLD1(clk, left_in, right_out2, fastClk, leftbutton, resetbutton, rightbutton, pos_c, sel)
+    cpld2 = CPLD2(clk, resetbutton, left_in, sel, sel_out, left_in2, sel_decoded)
+    cpld3 = CPLD3(clk, resetbutton, left_in2, sel,sel_out2, right_out2, pos_c, last_row)
+    
+                  
+    @always_comb
+    def assign():
+        rows.next[4:] = sel_out
+        rows.next[7:4] = sel_out2[3:]
+        rows.next[7] = last_row
+        col_sel.next = sel
+        
+    return cpld1, cpld2, cpld3, assign
 def display(clk, fastClk, leftbutton, resetbutton, rightbutton , rows, col_sel):
     disp_col = Signal(intbv(0)[3:])
     st = enum('START', 'LOSE')
@@ -261,7 +299,7 @@ def display(clk, fastClk, leftbutton, resetbutton, rightbutton , rows, col_sel):
     right_out = Signal(intbv(0)[5:])
     right_out2 = Signal(intbv(0)[5:])
 
-    count_for_lose = Signal(intbv(0)[5:])
+    count_for_lose = Signal(intbv(0)[6:])
     isThereCollision = Signal(False)    
     # component here
 
@@ -326,7 +364,7 @@ def display(clk, fastClk, leftbutton, resetbutton, rightbutton , rows, col_sel):
                 
         else: # LOSE state
             
-            if count_for_lose < 23:
+            if count_for_lose < 24:
                 # downing&holding : 24 ticks
                 # row = count_for_lose
                 left_in.next = 31
@@ -352,7 +390,8 @@ def display(clk, fastClk, leftbutton, resetbutton, rightbutton , rows, col_sel):
         col_sel.next = disp_col
         
         #row assign
-        rows.next[7:] = concat(sel_out2[3:], sel_out)
+        rows.next[7:4] = sel_out2[3:]
+        rows.next[4:0] = sel_out
         
         if pos == disp_col:
             rows.next[7] = 1
@@ -413,7 +452,6 @@ def assignRows(col_sel,rows):
         
 # below is test code
 def displayTestBench():
-    
     fastClk = Signal(True)
     selClk = Signal(True)
     leftButton = Signal(False)
@@ -430,7 +468,7 @@ def displayTestBench():
     def selClkGen():
         selClk.next = not selClk
     #(clk, fastClk, leftbutton, resetbutton, rightbutton , rows, col_sel)
-    main = display(selClk, fastClk, leftButton, resetButton, rightButton, rows, col_sel)
+    main = overall(selClk, fastClk, leftButton, resetButton, rightButton, rows, col_sel)
 
     @instance
     def monitor():
@@ -528,10 +566,17 @@ def decoderTest():
     return r, mon        
 if __name__ == "__main__":
     sim = Simulation(displayTestBench())
+    '''
+def CPLD2(clk,rst, left_in, sel, sel_out, right_out):
+def CPLD3(clk,rst, left_in2, sel, sel_out2, right_out2, pos_c, last_row):
+'''
     #def display(clk, fastClk, leftbutton, resetbutton, rightbutton , rows, col_sel):
     toVerilog(display, Signal(False), Signal(False), Signal(False), ResetSignal(0,active=1, async=True), Signal(False), Signal(intbv(0)[8:]), Signal(intbv(0)[3:])) 
     #def LEDShift(clk, rst, i, sel, sel_out, right_out):
-    toVerilog(LEDShift, Signal(False),ResetSignal(0,active=1, async=True), Signal(intbv(0)[5 : ]), Signal(intbv(0)[5:]), Signal(intbv(0)[4:]), Signal(intbv(0)[5:])) 
+    toVerilog(LEDShift, Signal(False),ResetSignal(0,active=1, async=True), Signal(intbv(0)[5 : ]), Signal(intbv(0)[5:]), Signal(intbv(0)[4:]), Signal(intbv(0)[5:]))
+    toVerilog(CPLD2, Signal(False),ResetSignal(0,active=1, async=True), Signal(intbv(0)[5 : ]), Signal(intbv(0)[5:]), Signal(intbv(0)[4:]), Signal(intbv(0)[5:]), Signal(intbv(0)[5:]))
+    toVerilog(CPLD3, Signal(False),ResetSignal(0,active=1, async=True), Signal(intbv(0)[5 : ]), Signal(intbv(0)[5:]), Signal(intbv(0)[4:]), Signal(intbv(0)[5:]), Signal(intbv(0)[3:]), Signal(True)) 
     #displaySeperate(clk, left_in, right_out2, sel_out,sel_out2, fastClk, leftbutton, resetbutton, rightbutton , rows, col_sel):
-    toVerilog(displaySeperate, Signal(False), Signal(modbv(0)[5:]),  Signal(modbv(0)[5:]), Signal(modbv(0)[4:]), Signal(modbv(0)[4:]),Signal(False), Signal(False), ResetSignal(0,active=1, async=True), Signal(False), Signal(intbv(0)[8:]), Signal(intbv(0)[3:]))
+    #displaySeperate(clk, left_in, right_out2, fastClk, leftbutton, resetbutton, rightbutton , pos_c, col_sel):
+    toVerilog(CPLD1, Signal(False), Signal(modbv(0)[5:]), Signal(modbv(0)[5:]),Signal(False), Signal(False), ResetSignal(0,active=1, async=True), Signal(False), Signal(intbv(0)[3:]), Signal(intbv(0)[3:]))
     sim.run(10000000)

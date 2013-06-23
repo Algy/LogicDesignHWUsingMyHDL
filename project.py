@@ -241,10 +241,20 @@ def CPLD1(clk, left_in, right_out2, fastClk, leftbutton, resetbutton, rightbutto
     return changeCol, assign, FSM, positionBuf,  collision_check , rand
 
 def CPLD2(clk,rst, left_in, sel, sel_out, right_out, sel_decoded):
+    sel_decoded_before_fit = Signal( intbv(0)[5:] )
+    
     a = LEDShift(clk,rst,left_in,sel,sel_out, right_out)
-    dec = dec325(sel, sel_decoded)
+    dec = dec325(sel, sel_decoded_before_fit)
 
-    return a, dec
+    @always_comb
+    def fitToMatrix():
+        sel_decoded.next[0] = not sel_decoded_before_fit[0]
+        sel_decoded.next[1] = not sel_decoded_before_fit[1]
+        sel_decoded.next[2] = not sel_decoded_before_fit[2]
+        sel_decoded.next[3] = not sel_decoded_before_fit[3]
+        sel_decoded.next[4] = not sel_decoded_before_fit[4]
+        
+    return a, dec, fitToMatrix
 def CPLD3(clk,rst, left_in2, sel, sel_out2, right_out2, pos_c, last_row):
     a = LEDShift(clk,rst,left_in2,sel,sel_out2, right_out2)
     last = Signal(True)
@@ -257,7 +267,7 @@ def CPLD3(clk,rst, left_in2, sel, sel_out2, right_out2, pos_c, last_row):
             last_row.next = sel_out2[3]
     
     return a, replaceCharactor
-def overall( clk, fastClk, leftbutton, resetbutton, rightbutton , rows, col_sel):
+def overall( clk, fastClk, leftbutton, resetbutton, rightbutton , rows, col_sel, sel_decoded):
     # (clk, left_in, right_out2, fastClk, leftbutton, resetbutton, rightbutton , pos_c, col_sel):
     left_in = Signal(intbv(0)[5:])
     right_out2 = Signal(intbv(0)[5:])
@@ -266,11 +276,11 @@ def overall( clk, fastClk, leftbutton, resetbutton, rightbutton , rows, col_sel)
     sel = Signal(intbv(0)[3:])
     sel_out = Signal(intbv(0)[4:])
     sel_out2 = Signal(intbv(0)[4:])
-    sel_decoded = Signal(intbv(0)[5:])
     last_row = Signal(True)
     
     cpld1 = CPLD1(clk, left_in, right_out2, fastClk, leftbutton, resetbutton, rightbutton, pos_c, sel)
     cpld2 = CPLD2(clk, resetbutton, left_in, sel, sel_out, left_in2, sel_decoded)
+    
     cpld3 = CPLD3(clk, resetbutton, left_in2, sel,sel_out2, right_out2, pos_c, last_row)
     
                   
@@ -468,7 +478,9 @@ def displayTestBench():
     def selClkGen():
         selClk.next = not selClk
     #(clk, fastClk, leftbutton, resetbutton, rightbutton , rows, col_sel)
-    main = overall(selClk, fastClk, leftButton, resetButton, rightButton, rows, col_sel)
+        
+    sel_decoded = Signal(intbv(0)[5:])
+    main = overall(selClk, fastClk, leftButton, resetButton, rightButton, rows, col_sel, sel_decoded)
 
     @instance
     def monitor():
@@ -485,16 +497,18 @@ def displayTestBench():
             for t in range(5):
 
                 yield fastClk.posedge
+                print bin(sel_decoded)
                 for x in range(8):
                     
                     al[col_sel][x] = "бс" if rows[x] else "бр"
                     
+            
             for i in range(5):
                 for j in range(8):
                     print al[i][j],
                 print ""
             print ""
-                                    
+            
     return fastClkGen, selClkGen, main, monitor
 
 def ledGenTest():
@@ -574,8 +588,8 @@ def CPLD3(clk,rst, left_in2, sel, sel_out2, right_out2, pos_c, last_row):
     toVerilog(display, Signal(False), Signal(False), Signal(False), ResetSignal(0,active=1, async=True), Signal(False), Signal(intbv(0)[8:]), Signal(intbv(0)[3:])) 
     #def LEDShift(clk, rst, i, sel, sel_out, right_out):
     toVerilog(LEDShift, Signal(False),ResetSignal(0,active=1, async=True), Signal(intbv(0)[5 : ]), Signal(intbv(0)[5:]), Signal(intbv(0)[4:]), Signal(intbv(0)[5:]))
-    toVerilog(CPLD2, Signal(False),ResetSignal(0,active=1, async=True), Signal(intbv(0)[5 : ]), Signal(intbv(0)[5:]), Signal(intbv(0)[4:]), Signal(intbv(0)[5:]), Signal(intbv(0)[5:]))
-    toVerilog(CPLD3, Signal(False),ResetSignal(0,active=1, async=True), Signal(intbv(0)[5 : ]), Signal(intbv(0)[5:]), Signal(intbv(0)[4:]), Signal(intbv(0)[5:]), Signal(intbv(0)[3:]), Signal(True)) 
+    toVerilog(CPLD2, Signal(False),ResetSignal(0,active=1, async=True), Signal(intbv(0)[5 : ]), Signal(intbv(0)[3:]), Signal(intbv(0)[4:]), Signal(intbv(0)[5:]), Signal(intbv(0)[5:]))
+    toVerilog(CPLD3, Signal(False),ResetSignal(0,active=1, async=True), Signal(intbv(0)[5 : ]), Signal(intbv(0)[3:]), Signal(intbv(0)[4:]), Signal(intbv(0)[5:]), Signal(intbv(0)[3:]), Signal(True)) 
     #displaySeperate(clk, left_in, right_out2, sel_out,sel_out2, fastClk, leftbutton, resetbutton, rightbutton , rows, col_sel):
     #displaySeperate(clk, left_in, right_out2, fastClk, leftbutton, resetbutton, rightbutton , pos_c, col_sel):
     toVerilog(CPLD1, Signal(False), Signal(modbv(0)[5:]), Signal(modbv(0)[5:]),Signal(False), Signal(False), ResetSignal(0,active=1, async=True), Signal(False), Signal(intbv(0)[3:]), Signal(intbv(0)[3:]))

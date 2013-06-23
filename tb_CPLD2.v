@@ -3,7 +3,7 @@ module tb_CPLD2;
 reg clk;
 reg rst;
 reg [4:0] left_in;
-reg [4:0] sel;
+reg [2:0] sel;
 wire [3:0] sel_out;
 wire [4:0] right_out;
 wire [4:0] sel_decoded;

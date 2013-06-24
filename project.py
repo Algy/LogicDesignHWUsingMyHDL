@@ -116,15 +116,18 @@ def position(left, right, pos):
     @always(left.posedge, right.posedge)
     def shifting():
         if right:
-            if count == 0:
-                count.next = 4
-            else:
-                count.next = count - 1
+            if not left:
+                if count == 0:
+                    count.next = 4
+                else:
+                    count.next = count - 1
         elif left:
-            if count == 4:
-                count.next = 0
-            else:
-                count.next = count + 1
+            if not right:
+                    
+                if count == 4:
+                    count.next = 0
+                else:
+                    count.next = count + 1
         else:
             pass
 
